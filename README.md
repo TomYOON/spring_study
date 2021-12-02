@@ -1,8 +1,26 @@
 # spring_study
 
-## config file로 DI할 때 장점
+# DI
 
-- 다른 객체로 바꿀 때 편리함
+## 스프링 빈 등록 방법
+
+1. 컴포넌트 스캔
+2. 자바 코드를 통한 등록
+3. ~~XML~~ (실무에서 사용X)
+
+## 컴포넌트 스캔
+
+```java
+@Service
+@Repository
+@Controller
+@Component
+```
+
+- @Component 애노테이션을 사용하면 빈으로 자동 등록
+- @Service, @Repository, @Controller는 모두 @Component의 특수한 형태임
+
+## 자바 코드로 등록
 
 ```java
 @Configuration
@@ -25,10 +43,22 @@ public class SpringConfig {
         return new JpaMemberRepository(em);
     }
 }
-
 ```
 
-## JPA
+- 구현체를 바꿀 때 편리함
+- 실무에서 사용
+
+## DI 방법
+
+1. 필드 주입
+2. setter 주입
+3. 생성자 주입
+
+- 필드 주입의 경우 구현체를 바꾸면 직접 코드를 전부 수정해야하고 setter는 불필요한 함수 접근이 생길 수 있음(사실상 빈 등록은 컨테이너에 올라갈 때만 필요한데 어느 개발자든 setter함수를 호출 가능하기 때문에 맞지않음)
+
+---
+
+# JPA
 
 - JPA는 기존의 반복 코드는 물론이고, 기본적인 SQL도 JPA가 직접 만들어서 실행해준다.
 - JPA를 사용하면, SQL과 데이터 중심의 설계에서 객체 중심의 설계로 패러다임을 전환을 할 수 있다.
@@ -48,7 +78,23 @@ public class SpringConfig {
     }
 ```
 
-## Test Code
+## Spring data JPA
+
+- 인터페이스를 통한 기본적인 CRUD 제공
+- findByName(), findByEmail() 처럼 메서드 이름 만으로 조회 기능 제공
+- 페이징 기능 자동 제공
+
+```java
+public interface SpringDataJpaMemberRepository extends JpaRepository<Member, Long>, MemberRepository { //JpaRepository를 상속 받고 Member의 키인 id의 타입 long을 명시
+
+    //select m from Member m where m.name = ?
+    //인터페이스 이름만으로도 쿼리를 할 수 있다.
+    @Override
+    Optional<Member> findByName(String name);
+}
+```
+
+# Test Code
 
 ### unit test
 
@@ -57,6 +103,7 @@ public class SpringConfig {
 ### integration test
 
 - 실제 DB에 접근하고 Spring을 띄우는 등 전반적으로 테스트 하는 것
+- spring은 @SpringBootTest 애노테이션을 통해 컨테이너 환경에서 테스트 가능
 
 ### 유의점
 
