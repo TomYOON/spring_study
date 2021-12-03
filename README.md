@@ -56,8 +56,6 @@ public class SpringConfig {
 
 - 필드 주입의 경우 구현체를 바꾸면 직접 코드를 전부 수정해야하고 setter는 불필요한 함수 접근이 생길 수 있음(사실상 빈 등록은 컨테이너에 올라갈 때만 필요한데 어느 개발자든 setter함수를 호출 가능하기 때문에 맞지않음)
 
----
-
 # JPA
 
 - JPA는 기존의 반복 코드는 물론이고, 기본적인 SQL도 JPA가 직접 만들어서 실행해준다.
@@ -94,6 +92,33 @@ public interface SpringDataJpaMemberRepository extends JpaRepository<Member, Lon
 }
 ```
 
+# AOP
+
+- 공통 관심 사항(cross-cutting concern)과 핵심 관심 사항(core concern) 분리
+
+```java
+@Aspect
+@Component
+public class TimeTraceAop {
+
+    @Around("execution(* hello..hellospring..*(..))")
+    public Object execute(ProceedingJoinPoint joinPoint) throws Throwable {
+        long start = System.currentTimeMillis();
+        System.out.println("START: " + joinPoint.toString());
+        try {
+            return joinPoint.proceed();
+        } finally {
+            long finish = System.currentTimeMillis();
+            long timeMs = finish - start;
+            System.out.println("END: " + joinPoint.toString() + " " + timeMs + "ms");
+        }
+    }
+}
+```
+
+- 핵심 관심 사항을 깔끔하게 유지할 수 있음
+- 변경이 필요하면 해당 로직만 변경하면 됨
+
 # Test Code
 
 ### unit test
@@ -126,3 +151,4 @@ class MemberServiceIntegrationTest {
 - [ ] JPA 정리 및 실습
 - [ ] TDD 정리 및 실습
 - [ ] IntelliJ 단축키 더 알아보기
+- ✅ AOP 정리 -> https://carbon2.tistory.com/4
