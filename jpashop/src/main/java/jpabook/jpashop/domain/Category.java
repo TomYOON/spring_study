@@ -27,11 +27,17 @@ public class Category {
     ) //중간 테이블 매핑을 해줘야함
     private List<Item> items = new ArrayList<>();
 
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "parent_id")
     private Category parent; // 부모 카테고리
 
     @OneToMany(mappedBy = "parent") // 자식 카테고리
     private List<Category> child = new ArrayList<>();
+
+    //==연관관계 메서드==//
+    public void addChildCategory(Category child) {
+        this.child.add(child);
+        child.setParent(this);
+    }
 
 }
