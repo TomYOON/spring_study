@@ -1,0 +1,20 @@
+spring:
+#  datasource:
+#    url: jdbc:h2:mem:test
+#    username: sa
+#    password:
+#    driver-class-name: org.h2.Driver
+#
+#  jpa:
+#    hibernate:
+#      ddl-auto: create-drop
+#    properties:
+#      hibernate:
+##        show_sql: true #시스템 out으로 찍기때문에 아래 log로 찍는 방식이 더 올바름
+#        format_sql: true
+# 스프링 부트는 별도의 설정이 없으면 test시 memory mode로 돌린다.
+
+logging:
+  level:
+    org.hibernate.SQL: debug
+    org.hibernate.type: trace

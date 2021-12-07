@@ -10,7 +10,7 @@ spring:
       ddl-auto: create
     properties:
       hibernate:
-#        show_sql: true #시스템 out으로 찍기때문에 아래 log로 찍는 방식이 더 옳바름
+#        show_sql: true #시스템 out으로 찍기때문에 아래 log로 찍는 방식이 더 올바름
         format_sql: true
 
 logging:
