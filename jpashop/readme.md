@@ -144,6 +144,53 @@ public class Order {
 }
 ```
 
+## 변경 감지와 병합
+
+### 준영속 엔티티
+
+- 영속성 컨텍스트가 더는 관리하지 않는 엔티티를 말함
+- 이미 한번 저장되어서 식별자가 존재하는 걸 임의로 만들어낼 때 등
+
+```java
+       Book book = new Book();
+       book.setId(form.getId()); //이미 존재하는 아이디를 merge
+       book.setName(form.getName());
+       book.setPrice(form.getPrice());
+       book.setStockQuantity(form.getStockQuantity());
+       book.setAuthor(form.getAuthor());
+       book.setIsbn(form.getIsbn());
+
+       itemService.saveItem(book);
+```
+
+### 준영속 엔티티 수정 방법
+
+- 변경 감지 기능 사용
+- 병합 사용
+
+#### 변경 감지를 사용하는 법
+
+```java
+@Transactional
+void update(Item itemParam) { //itemParam: 파리미터로 넘어온 준영속 상태의 엔티티
+ Item findItem = em.find(Item.class, itemParam.getId()); //같은 엔티티를 조회한
+다.
+ findItem.setPrice(itemParam.getPrice()); //데이터를 수정한다.
+}
+```
+
+### 병합 동작 방식
+
+1. 준영속 엔티티의 식별자 값으로 영속 엔티티를 조회한다.
+2. 영속 엔티티의 값을 준영속 엔티티의 값으로 모두 교체한다.(병합한다.)
+3. 트랜잭션 커밋 시점에 변경 감지 기능이 동작해서 데이터베이스에 UPDATE SQL이 실행
+
+### 엔티티를 변경할 때는 항상 변경 감지를 사용해야함
+
+- 병합방식은 영속 엔티티의 값을 준영속 엔티티의 값으로 모두 변경하기 때문에 위험도가 높다.(null등)
+- 실무에서는 보통 업데이트 기능이 매우 제한적이다.
+- 따라서 영속 상태의 엔티티를 조회하고 엔티티의 데이터를 직접 변경하는 것이 올바른 방식이다.
+
 # Test Code
 
 ### Test를 할 때 DB를 in-memory 방식으로 사용할 수 있다.
@@ -212,3 +259,13 @@ logging:
 > domainModel.html)이라 한다. 반대로 엔티티에는 비즈니스 로직이 거의 없고 서비스 계층에서 대부분
 > 의 비즈니스 로직을 처리하는 것을 트랜잭션 스크립트 패턴(http://martinfowler.com/eaaCatalog/
 > transactionScript.html)이라 한다.
+
+## 폼 객체를 따로 사용하는 이유
+
+> 요구사항이 정말 단순할 때는 폼 객체( MemberForm ) 없이 엔티티( Member )를 직접 등록과 수정 화면
+> 에서 사용해도 된다. 하지만 화면 요구사항이 복잡해지기 시작하면, 엔티티에 화면을 처리하기 위한 기능이
+> 점점 증가한다. 결과적으로 엔티티는 점점 화면에 종속적으로 변하고, 이렇게 화면 기능 때문에 지저분해진
+> 엔티티는 결국 유지보수하기 어려워진다.
+> 실무에서 엔티티는 핵심 비즈니스 로직만 가지고 있고, 화면을 위한 로직은 없어야 한다. 화면이나 API에 맞
+> 는 폼 객체나 DTO를 사용하자. 그래서 화면이나 API 요구사항을 이것들로 처리하고, 엔티티는 최대한 순수
+> 하게 유지하자.
