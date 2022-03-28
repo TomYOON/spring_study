@@ -145,6 +145,10 @@ class MemberServiceIntegrationTest {
 
 1. ctrl + alt + v 변수명 만들기
 2. ctrl + shift + enter 끝에 ; 삽입하면서 끝으로 이동
+3. ctrl + shift + alt + L: 라인 포메팅
+4. 클래스 코드 네비게이터에 복붙하면 클래스 생성됨
+5. alt + shift + insert: mulit cursor 모드 (shift 방향키로 커서 생성)
+6. ctrl + D: copy line below
 
 ## ToDo list
 
@@ -152,3 +156,8 @@ class MemberServiceIntegrationTest {
 - [ ] TDD 정리 및 실습
 - [ ] IntelliJ 단축키 더 알아보기
 - ✅ AOP 정리 -> https://carbon2.tistory.com/4
+
+v4와 v3는 우열을 가리기 힘듬 (trade off)
+v4는 재사용성이 없음, 성능은 아주 조금 더 좋음, 대부분의 성능은 조인에서 먹음
+v3는 많은 API에서 사용 가능
+repository는 가급적 순수한 entity를 조회하는데 사용
