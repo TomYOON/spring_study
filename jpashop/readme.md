@@ -191,6 +191,169 @@ void update(Item itemParam) { //itemParam: 파리미터로 넘어온 준영속 �
 - 실무에서는 보통 업데이트 기능이 매우 제한적이다.
 - 따라서 영속 상태의 엔티티를 조회하고 엔티티의 데이터를 직접 변경하는 것이 올바른 방식이다.
 
+# JPA 쿼리 성능 개선
+
+order 데이터를 가져오기 위해 일반적인 쿼리를 사용할 경우 N+1 문제가 발생한다. 예를 들어 주문 2개를 조회할 때 order 내의 회원 정보와 배달 정보를 조회하기 위해 order 쿼리 + 회원 정보 2번(N번) + 배달 정보 2번 (N번)의 쿼리가 날라간다.
+
+```sql
+    select
+        order0_.order_id as order_id1_6_,
+        order0_.delivery_id as delivery4_6_,
+        order0_.member_id as member_i5_6_,
+        order0_.order_date as order_da2_6_,
+        order0_.status as status3_6_
+    from
+        orders order0_
+    inner join
+        member member1_
+            on order0_.member_id=member1_.member_id limit ?
+---
+    select
+        member0_.member_id as member_i1_4_0_,
+        member0_.city as city2_4_0_,
+        member0_.street as street3_4_0_,
+        member0_.zipcode as zipcode4_4_0_,
+        member0_.name as name5_4_0_
+    from
+        member member0_
+    where
+        member0_.member_id=?
+---
+    select
+        delivery0_.delivery_id as delivery1_2_0_,
+        delivery0_.city as city2_2_0_,
+        delivery0_.street as street3_2_0_,
+        delivery0_.zipcode as zipcode4_2_0_,
+        delivery0_.status as status5_2_0_
+    from
+        delivery delivery0_
+    where
+        delivery0_.delivery_id=?
+---
+    select
+        member0_.member_id as member_i1_4_0_,
+        member0_.city as city2_4_0_,
+        member0_.street as street3_4_0_,
+        member0_.zipcode as zipcode4_4_0_,
+        member0_.name as name5_4_0_
+    from
+        member member0_
+    where
+        member0_.member_id=?
+---
+    select
+        delivery0_.delivery_id as delivery1_2_0_,
+        delivery0_.city as city2_2_0_,
+        delivery0_.street as street3_2_0_,
+        delivery0_.zipcode as zipcode4_2_0_,
+        delivery0_.status as status5_2_0_
+    from
+        delivery delivery0_
+    where
+        delivery0_.delivery_id=?
+
+```
+
+## 해결 방법
+
+### 1. fetch join
+
+```java
+    public List<Order> finAllWithMemberDelivery() {
+        return em.createQuery(
+                "select o from Order o" +
+                        " join fetch o.member m" +
+                        " join fetch o.delivery d", Order.class
+        ).getResultList();
+    }
+```
+
+조인을 지정하여 쿼리를 날리면
+
+```sql
+   select
+        order0_.order_id as order_id1_6_0_,
+        member1_.member_id as member_i1_4_1_,
+        delivery2_.delivery_id as delivery1_2_2_,
+        order0_.delivery_id as delivery4_6_0_,
+        order0_.member_id as member_i5_6_0_,
+        order0_.order_date as order_da2_6_0_,
+        order0_.status as status3_6_0_,
+        member1_.city as city2_4_1_,
+        member1_.street as street3_4_1_,
+        member1_.zipcode as zipcode4_4_1_,
+        member1_.name as name5_4_1_,
+        delivery2_.city as city2_2_2_,
+        delivery2_.street as street3_2_2_,
+        delivery2_.zipcode as zipcode4_2_2_,
+        delivery2_.status as status5_2_2_
+    from
+        orders order0_
+    inner join
+        member member1_
+            on order0_.member_id=member1_.member_id
+    inner join
+        delivery delivery2_
+            on order0_.delivery_id=delivery2_.delivery_id
+```
+
+이와 같이 한번만 쿼리를 날리기 때문에 네트워크 통신 비용을 아껴 성능을 향상 시킬 수 있다.
+
+### 2. DTO로 직접 조회
+
+```java
+public List<OrderSimpleQueryDto> findOrderDtos() {
+    return em.createQuery(
+                    "select new jpabook.jpashop.repository.order.simplequery.OrderSimpleQueryDto(o.id, m.name, o.orderDate, o.status, d.address) from Order o" +
+                            " join o.member m" +
+                            " join o.delivery d", OrderSimpleQueryDto.class)
+            .getResultList();
+}
+```
+
+이 방법 또한 한 번만 쿼리가 가고, fetch 조인과 다른점은
+
+```sql
+    select
+        order0_.order_id as col_0_0_,
+        member1_.name as col_1_0_,
+        order0_.order_date as col_2_0_,
+        order0_.status as col_3_0_,
+        delivery2_.city as col_4_0_,
+        delivery2_.street as col_4_1_,
+        delivery2_.zipcode as col_4_2_
+    from
+        orders order0_
+    inner join
+        member member1_
+            on order0_.member_id=member1_.member_id
+    inner join
+        delivery delivery2_
+            on order0_.delivery_id=delivery2_.delivery_id
+```
+
+select 쿼리 부분을 선택할 수 있다는 점이다.
+
+### 1, 2번 방식의 장단점
+
+fetch join
+
+- 재사용성이 높음
+- 개발 코드도 간결함
+
+DTO 직접 조회
+
+- 네트워크 용량을 최적화 (생각보다 미비)
+- 재사용성이 떨어짐 (API 스펙에 종속됨)
+
+## 쿼리 방식 선택 권장 순서
+
+1. 우선 엔티티를 DTO로 변환하는 방법을 선택한다.
+2. 필요하면 페치 조인으로 성능을 최적화 한다. 대부분의 성능 이슈가 해결된다.
+3. 그래도 안되면 DTO로 직접 조회하는 방법을 사용한다.
+4. 최후의 방법은 JPA가 제공하는 네이티브 SQL이나 스프링 JDBC Template을 사용해서 SQL을 직접
+   사용한다.
+
 # Test Code
 
 ### Test를 할 때 DB를 in-memory 방식으로 사용할 수 있다.
@@ -269,3 +432,42 @@ logging:
 > 실무에서 엔티티는 핵심 비즈니스 로직만 가지고 있고, 화면을 위한 로직은 없어야 한다. 화면이나 API에 맞
 > 는 폼 객체나 DTO를 사용하자. 그래서 화면이나 API 요구사항을 이것들로 처리하고, 엔티티는 최대한 순수
 > 하게 유지하자.
+
+## temp
+
+    public CreateMemberResponse saveMemberV1(@RequestBody @Valid Member member) {
+
+    @NotEmpty
+    private String name;
+
+api를 만들 때 request DTO를 따로 만들어주는 것이 더 좋다
+api 스펙을 유지할 수 있다.
+예를 들어 @NotEmpty가 필요한 api가 있을 수 있고 아닌 api가 있을 수 있는데 entity에 @NotEmpty를 걸어버리면 문제가 발생한다.
+
+put은 멱등함.
+같은 것을 여러번 호출해도 같다.
+
+json은 array로 오면 안된다. array가 필요하면
+{
+data:[]
+}
+이런 구조여야 한다.
+
+shift + F6: name refactor
+command + alt + p: 파라미터 추출
+
+양방향 관계를 json으로 부를 때 둘 중 한쪽의 @JsonIgnore를 해줘야함
+
+fetch = LAZY일 경우 지연로딩임 Order를 가져올때 member를 안가져옴
+그래서 Order내의 member 변수에는 proxy를 넣어두는데 그게 bytebuddy
+
+> 주의: 엔티티를 직접 노출할 때는 양방향 연관관계가 걸린 곳은 꼭! 한곳을 @JsonIgnore 처리 해야 한다.
+> 안그러면 양쪽을 서로 호출하면서 무한 루프가 걸린다.
+> 참고: 앞에서 계속 강조했듯이 정말 간단한 애플리케이션이 아니면 엔티티를 API 응답으로 외부로 노출하는
+> 것은 좋지 않다. 따라서 Hibernate5Module 를 사용하기 보다는 DTO로 변환해서 반환하는 것이 더 좋은
+> 방법이다.
+> 주의: 지연 로딩(LAZY)을 피하기 위해 즉시 로딩(EARGR)으로 설정하면 안된다! 즉시 로딩 때문에
+> 연관관계가 필요 없는 경우에도 데이터를 항상 조회해서 성능 문제가 발생할 수 있다. 즉시 로딩으로
+> 설정하면 성능 튜닝이 매우 어려워 진다.
+> 항상 지연 로딩을 기본으로 하고, 성능 최적화가 필요한 경우에는 페치 조인(fetch join)을 사용해라!(V3
+> 에서 설명)
