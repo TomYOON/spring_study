@@ -12,6 +12,7 @@ spring:
       hibernate:
 #        show_sql: true #시스템 out으로 찍기때문에 아래 log로 찍는 방식이 더 올바름
         format_sql: true
+        default_batch_fetch_size: 100
 
 logging:
   level:
