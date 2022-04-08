@@ -149,6 +149,9 @@ class MemberServiceIntegrationTest {
 4. 클래스 코드 네비게이터에 복붙하면 클래스 생성됨
 5. alt + shift + insert: mulit cursor 모드 (shift 방향키로 커서 생성)
 6. ctrl + D: copy line below
+7. ctrl + B: 커서가 있는 객체의 클래스 정의로 이동
+8. alt + insert: 생성자, getter 등
+9. ctrl + alt + M: 함수화
 
 ## ToDo list
 
