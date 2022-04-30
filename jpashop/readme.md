@@ -354,6 +354,219 @@ DTO 직접 조회
 4. 최후의 방법은 JPA가 제공하는 네이티브 SQL이나 스프링 JDBC Template을 사용해서 SQL을 직접
    사용한다.
 
+## 컬렉션 조회 최적화
+
+one to many 조회 최적화, 일반적으로 쿼리를 날렸을 경우 해당 컬렉션에 포함된 데이터를 가져오기 위해 N만큼의 쿼리를 날리게 되므로 매우 비효율적
+
+### 해결 방법
+
+1. fetch join
+2. 지연 로딩으로 조회
+
+### fetch join
+
+```java
+// OrderRepository
+   public List<Order> findAllWithItem() { //조인 때문에 order가 뻥튀기됨 (2개씩 넘어감)
+        return em.createQuery(
+                "select distinct o from Order o" +  //DB의 distinct와 다른 점은 order가 같은 id 값이면 중복을 제거해줌, DB는 row가 모두 같아야 제거
+                        " join fetch o.member m" +
+                        " join fetch o.delivery d" +
+                        " join fetch o.orderItems oi" +
+                        " join fetch oi.item i", Order.class)
+                .getResultList();
+    }
+```
+
+- fetch join을 통해 한 번의 쿼리만 나감
+- 그러나 페이징이 불가능 (만약 페이징을 한다면 메모리에서 정렬 -> 매우 위험)
+
+```java
+    public List<Order> findAllWithItem() {
+        return em.createQuery(
+                "select distinct o from Order o" +
+                        " join fetch o.member m" +
+                        " join fetch o.delivery d" +
+                        " join fetch o.orderItems oi" +
+                        " join fetch oi.item i", Order.class)
+                .setFirstResult(0)
+                .setMaxResults(100)
+                .getResultList();
+    }
+```
+
+위처럼 collection인 orderItems를 조인한 후 페이징 쿼리를 하면 아래와 같은 경고가 뜸
+![sort_in_memory_log](./readme-img/sort_in_memory_log.png)
+3번째 로그 WARN을 보면 메모리에서 적용(정렬을) 한다고 경고하고 있다.
+
+### 지연 로딩으로 조회
+
+컬렉션이 포함된 쿼리에서 페이징을 극복할 수 있는 방법은 지연로딩을 이용하는 것이다.
+
+```java
+    public List<Order> findAllWithMemberDelivery(int offset, int limit) {
+        return em.createQuery(
+                "select o from Order o" +
+                        " join fetch o.member m" +
+                        " join fetch o.delivery d", Order.class)
+                .setFirstResult(offset)
+                .setMaxResults(limit)
+                .getResultList();
+    }
+}
+```
+
+쿼리를 보면 orderItems를 조인하지 않았다. 이러면 지연로딩에 의해 orderItem을 읽어온다. 그러나 이 방법만으로는 최적화가 불가능하다.
+
+```sql
+-- orderItems에 N개의 item이 있으면 N번의 쿼리가 더 나감
+    select
+        orderitems0_.order_id as order_id5_5_0_,
+        orderitems0_.order_item_id as order_it1_5_0_,
+        orderitems0_.order_item_id as order_it1_5_1_,
+        orderitems0_.count as count2_5_1_,
+        orderitems0_.item_id as item_id4_5_1_,
+        orderitems0_.order_id as order_id5_5_1_,
+        orderitems0_.order_price as order_pr3_5_1_
+    from
+        order_item orderitems0_
+    where
+        orderitems0_.order_id=?
+-------------------------------------------------------------
+    select
+        item0_.item_id as item_id2_3_0_,
+        item0_.name as name3_3_0_,
+        item0_.price as price4_3_0_,
+        item0_.stock_quantity as stock_qu5_3_0_,
+        item0_.author as author6_3_0_,
+        item0_.isbn as isbn7_3_0_,
+        item0_.artist as artist8_3_0_,
+        item0_.etc as etc9_3_0_,
+        item0_.actor as actor10_3_0_,
+        item0_.director as directo11_3_0_,
+        item0_.dtype as dtype1_3_0_
+    from
+        item item0_
+    where
+        item0_.item_id=?
+------------------------------------------------------------
+    select
+        item0_.item_id as item_id2_3_0_,
+        item0_.name as name3_3_0_,
+        item0_.price as price4_3_0_,
+        item0_.stock_quantity as stock_qu5_3_0_,
+        item0_.author as author6_3_0_,
+        item0_.isbn as isbn7_3_0_,
+        item0_.artist as artist8_3_0_,
+        item0_.etc as etc9_3_0_,
+        item0_.actor as actor10_3_0_,
+        item0_.director as directo11_3_0_,
+        item0_.dtype as dtype1_3_0_
+    from
+        item item0_
+    where
+        item0_.item_id=?
+```
+
+위는 실제 로그가 찍히는 것을 가져온 것인데, 아이템마다 쿼리가 다로 나가는 것을 볼 수있다. DB 접근을 아이템 개수만큼 더 한다는 뜻이다.
+
+이를 극복하기 위해서는 yml 파일에 다음을 추가해야 한다.
+
+```yml
+# default_batch_fetch_size 추가
+spring:
+  datasource:
+    url: jdbc:h2:tcp://localhost/~/jpashop
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: create
+    properties:
+      hibernate:
+        #        show_sql: true #시스템 out으로 찍기때문에 아래 log로 찍는 방식이 더 올바름
+        format_sql: true
+        default_batch_fetch_size: 100
+
+logging:
+  level:
+    org.hibernate.SQL: debug
+#    org.hibernate.type: trace
+```
+
+이를 추가하면 다음과 같이 쿼리가 나간다.
+
+```sql
+   select
+        item0_.item_id as item_id2_3_0_,
+        item0_.name as name3_3_0_,
+        item0_.price as price4_3_0_,
+        item0_.stock_quantity as stock_qu5_3_0_,
+        item0_.author as author6_3_0_,
+        item0_.isbn as isbn7_3_0_,
+        item0_.artist as artist8_3_0_,
+        item0_.etc as etc9_3_0_,
+        item0_.actor as actor10_3_0_,
+        item0_.director as directo11_3_0_,
+        item0_.dtype as dtype1_3_0_
+    from
+        item item0_
+    where
+        item0_.item_id in (
+            ?, ?, ?, ?
+        )
+```
+
+in을 사용해서 한 번에 아이템을 가져온다.
+default_batch_fetch_size의 의미는 설정한 숫자만큼 쿼리를 모았다가 줄일 수 있는 쿼리는 줄여서 쿼리를 날리는 것이다. 보통 100~1000사이로 설정한다고 한다.
+@BatchSize 를 통해서 개별로 설정도 가능하다.
+
+> 참고: default_batch_fetch_size 의 크기는 적당한 사이즈를 골라야 하는데, 100~1000 사이를
+> 선택하는 것을 권장한다. 이 전략을 SQL IN 절을 사용하는데, 데이터베이스에 따라 IN 절 파라미터를
+> 1000으로 제한하기도 한다. 1000으로 잡으면 한번에 1000개를 DB에서 애플리케이션에 불러오므로 DB
+> 에 순간 부하가 증가할 수 있다. 하지만 애플리케이션은 100이든 1000이든 결국 전체 데이터를 로딩해야
+> 하므로 메모리 사용량이 같다. 1000으로 설정하는 것이 성능상 가장 좋지만, 결국 DB든 애플리케이션이든
+> 순간 부하를 어디까지 견딜 수 있는지로 결정하면 된다.
+
+## API 개발 고급 정리
+
+### 정리
+
+- 엔티티 조회
+  - 엔티티를 조회해서 그대로 반환: V1
+  - 엔티티 조회 후 DTO로 변환: V2
+  - 페치 조인으로 쿼리 수 최적화: V3
+  - 컬렉션 페이징과 한계 돌파: V3.1
+    - 컬렉션은 페치 조인시 페이징이 불가능
+    - ToOne 관계는 페치 조인으로 쿼리 수 최적화
+    - 컬렉션은 페치 조인 대신에 지연 로딩을 유지하고, hibernate.default_batch_fetch_size , @BatchSize 로 최적화
+- DTO 직접 조회
+  - JPA에서 DTO를 직접 조회: V4
+  - 컬렉션 조회 최적화 - 일대다 관계인 컬렉션은 IN 절을 활용해서 메모리에 미리 조회해서 최적화: V5
+  - 플랫 데이터 최적화 - JOIN 결과를 그대로 조회 후 애플리케이션에서 원하는 모양으로 직접 변환: V6
+
+### 권장 순서
+
+1. 엔티티 조회 방식으로 우선 접근
+   1. 페치조인으로 쿼리 수를 최적화
+   2. 컬렉션 최적화
+      1. 페이징 필요 hibernate.default_batch_fetch_size , @BatchSize 로 최적화
+      2. 페이징 필요X 페치 조인 사용
+2. 엔티티 조회 방식으로 해결이 안되면 DTO 조회 방식 사용
+3. DTO 조회 방식으로 해결이 안되면 NativeSQL or 스프링 JdbcTemplat
+
+> 참고: 엔티티 조회 방식은 페치 조인이나, hibernate.default_batch_fetch_size , @BatchSize 같이
+> 코드를 거의 수정하지 않고, 옵션만 약간 변경해서, 다양한 성능 최적화를 시도할 수 있다. 반면에 DTO를
+> 직접 조회하는 방식은 성능을 최적화 하거나 성능 최적화 방식을 변경할 때 많은 코드를 변경해야 한다.
+
+> 참고: 개발자는 성능 최적화와 코드 복잡도 사이에서 줄타기를 해야 한다. 항상 그런 것은 아니지만, 보통
+> 성능 최적화는 단순한 코드를 복잡한 코드로 몰고간다.
+> 엔티티 조회 방식은 JPA가 많은 부분을 최적화 해주기 때문에, 단순한 코드를 유지하면서, 성능을 최적화 할
+> 수 있다.
+> 반면에 DTO 조회 방식은 SQL을 직접 다루는 것과 유사하기 때문에, 둘 사이에 줄타기를 해야 한다.
+
 # Test Code
 
 ### Test를 할 때 DB를 in-memory 방식으로 사용할 수 있다.
@@ -471,3 +684,7 @@ fetch = LAZY일 경우 지연로딩임 Order를 가져올때 member를 안가져
 > 설정하면 성능 튜닝이 매우 어려워 진다.
 > 항상 지연 로딩을 기본으로 하고, 성능 최적화가 필요한 경우에는 페치 조인(fetch join)을 사용해라!(V3
 > 에서 설명)
+
+Dto를 감쌀 때는 그 안에 있는 entity 또한 전부 감싸줘야 한다. ex) orderItems
+
+fetch 조인을 하고 페이징 쿼리를 날리면 메모리에서 정렬됨 -> 치명적
